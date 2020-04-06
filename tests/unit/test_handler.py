@@ -106,7 +106,11 @@ def request_seir(apigw_event):
             "R0"      : params.R0,
             "T"       : params.T,
             "Ti"      : params.Ti,
+            "Tm"      : params.Tm,
             "days"    : params.days,
+            "Q"       : params.Q,
+            "N"       : params.N,
+            "absolute": params.absolute,
         }
     }
 

@@ -90,12 +90,16 @@ def wrapper_sir(params):
 
 
 def wrapper_seir(params):
-    R0 = float(params['R0'])
-    T  = float(params['T' ])
+    R0   = float(params['R0'  ])
+    T    = float(params['T'   ])
     Ti = float(params['Ti' ])
-    days = int(params['days'])
+    Tm   = int  (params['Tm'  ])
+    days = int  (params['days'])
+    Q    = float(params['Q'   ])
+    N    = int  (params['N'  ])
+    absolute = bool(params['absolute'])
 
-    seir_result = compute_basic_seir_model(R0, T, Ti, days, n=1000)
+    seir_result = compute_basic_seir_model(R0, T, Ti, Tm, Q, days, N, absolute)
 
     t = seir_result.t.tolist()
     S = seir_result.S.tolist()
@@ -169,27 +173,40 @@ def compute_basic_sir_model(R0, T, tm, Q, days, N, absolute):
     return sir
 
 
-def compute_basic_seir_model(R0, T, Ti, days, n=1000):
+def compute_basic_seir_model(R0, T, Ti, Tm, Q, days, N, absolute):
     # Initial number of infected and recovered individuals, I0 and R0.
+    i0 = 1e-4
+    e0 = 1e-4
+    s0 = 1 - i0 - e0
+    y0 = (s0, e0, i0)
+
     t_start = 0.0
     t_end   = days
     t_inc   = 1
-
     t_range = np.arange(t_start, t_end+t_inc, t_inc)
-    Gamma   = 1. / T
-    Sigma   = 1. / Ti
-    Beta    = Gamma * R0
-    I0, E0  = 1E-4, 1E-4
-    S0      = 1 - I0 - E0
-    Y0      = (S0, E0, I0)
 
-    RES = odeint(cbm.seir_deriv, Y0, t_range, args=(Beta, Gamma, Sigma))
-    S, E, I = RES.T
+    Gamma = 1./T
+    Sigma = 1./Ti
+    Beta  = Gamma * R0
+    ts = [(0, Tm), (Tm, days)]
+    ms = [1, 1 - Q/100]
+
+    M = cbm.mitigation_function(t_range, ts, ms)
+    ret = odeint(cbm.seir_deriv_time, y0, t_range, args=(M, Beta, Gamma, Sigma))
+    S, E, I = ret.T
     R = 1 - S - E - I
-    #seir_result = SEIR(N=n, S=S, I=I, E=E, R=R, beta=Beta, R0=R0, gamma=Gamma, sigma = Sigma, t= t_range)
-    seir_result = SEIR(N=n, S=S*n, I=I*n, E=E*n, R=R*n, beta=Beta, R0=R0, gamma=Gamma, sigma = Sigma, t= t_range)
 
-    return seir_result
+    if absolute:
+        S = S * N
+        E = E * N
+        I = I * N
+        R = R * N
+
+    seir = SEIR(N=N, S=S, I=I, E=E, R=R,
+                beta=Beta, R0=R0, gamma=Gamma, sigma = Sigma, t= t_range)
+
+    return seir
+
 
 poblacion = (
     ['Andalucía', 'Aragón', 'Asturias', 'Baleares', 'Canarias', 'Cantabria', 'Cas-León', 'Cas-Mancha', 'Cataluña', 'Valencia', 'Extremadura', 'Galicia', 'Madrid', 'Murcia', 'Navarra', 'Euskadi', 'Rioja', 'Ceuta', 'Melilla'],
