@@ -2,7 +2,23 @@ import json
 
 import pytest
 
-from hello_world import app
+from covid_server import app
+
+import collections
+
+Parameters = collections.namedtuple('Parameters',
+                                ['R0', 'T', 'Ti', 'days', 'Tm', 'M', 'Q', 'N', 'absolute'])
+
+params = Parameters(
+    R0   =   3.5,
+    T    =   7,
+    Ti   =   5,
+    days = 100,
+    Tm   =  15,
+    M    =   0.35,
+    Q    =  50,
+    N    = 47e6,
+    absolute = True)
 
 
 @pytest.fixture()
@@ -10,7 +26,7 @@ def apigw_event():
     """ Generates API GW Event"""
 
     return {
-        "body": '{ "test": "body"}',
+        "body": '{ "days": 15}',
         "resource": "/{proxy+}",
         "requestContext": {
             "resourceId": "123456",
@@ -62,12 +78,97 @@ def apigw_event():
     }
 
 
-def test_lambda_handler(apigw_event, mocker):
 
-    ret = app.lambda_handler(apigw_event, "")
+@pytest.fixture()
+def request_sir(apigw_event):
+    payload = {
+        "model": "SIR",
+        "params": {
+            "R0"      : params.R0,
+            "T"       : params.T,
+            "Tm"      : params.Tm,
+            "days"    : params.days,
+            "Q"       : params.Q,
+            "N"       : params.N,
+            "absolute": params.absolute,
+        }
+    }
+
+    apigw_event['body'] = json.dumps(payload)
+    return apigw_event
+
+
+@pytest.fixture()
+def request_seir(apigw_event):
+    payload = {
+        "model": "SEIR",
+        "params": {
+            "R0"      : params.R0,
+            "T"       : params.T,
+            "Ti"      : params.Ti,
+            "days"    : params.days,
+        }
+    }
+
+    apigw_event['body'] = json.dumps(payload)
+    return apigw_event
+
+
+@pytest.fixture()
+def request_beds(apigw_event):
+    payload = {"model": "beds",
+               "params": {
+                   "R0": "3",
+                   "T": "7",
+                   "Ti": "5",
+                   "days": "100",
+                   "Tm" : "15",
+                   "M" : "0.35",
+               }
+              }
+
+    apigw_event['body'] = json.dumps(payload)
+    return apigw_event
+
+
+def test_sir(request_sir, mocker):
+
+    ret = app.lambda_handler(request_sir, "")
     data = json.loads(ret["body"])
 
     assert ret["statusCode"] == 200
-    assert "message" in ret["body"]
-    assert data["message"] == "hello world"
-    # assert "location" in data.dict_keys()
+    assert len(data['t']) == params.days + 1
+    assert len(data['S']) == params.days + 1
+    assert len(data['I']) == params.days + 1
+    assert len(data['R']) == params.days + 1
+
+
+def test_seir(request_seir, mocker):
+
+    ret = app.lambda_handler(request_seir, "")
+    data = json.loads(ret["body"])
+
+    assert ret["statusCode"] == 200
+    assert len(data['t']) == params.days + 1
+    assert len(data['S']) == params.days + 1
+    assert len(data['E']) == params.days + 1
+    assert len(data['I']) == params.days + 1
+    assert len(data['R']) == params.days + 1
+
+def test_beds(request_beds, mocker):
+
+    ret = app.lambda_handler(request_beds, "")
+    data = json.loads(ret["body"])
+
+    assert ret["statusCode"] == 200
+    assert len(data['t']) == params.days + 1
+
+    assert len(data) == 20
+    regions = ['Andalucía', 'Aragón', 'Asturias', 'Baleares', 'Canarias',
+               'Cantabria', 'Cas-León', 'Cas-Mancha', 'Cataluña', 'Valencia',
+               'Extremadura', 'Galicia', 'Madrid', 'Murcia', 'Navarra',
+               'Euskadi', 'Rioja', 'Ceuta', 'Melilla']
+
+    for region in regions:
+        assert 'capacity' in data[region]
+        assert  len(data[region]['camas']) == params.days + 1
